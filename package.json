@@ -6,8 +6,8 @@
 	"unityRelease": "0b13",
     "displayName": "Universal RP",
     "dependencies": {
-        "com.unity.render-pipelines.core": "git@github.com:weiping-playnext/coreRP.git",
-        "com.unity.shadergraph": "git@github.com:weiping-playnext/shadergraph.git"
+        "com.unity.render-pipelines.core": "7.2.0",
+        "com.unity.shadergraph": "7.2.0"
     },
 	"keywords":[
         "graphics",
