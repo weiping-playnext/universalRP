@@ -111,8 +111,6 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_ResetHistory = true;
         }
 
-        public void Cleanup() => m_Materials.Cleanup();
-
         public void Setup(in RenderTextureDescriptor baseDescriptor, in RenderTargetHandle source, in RenderTargetHandle destination, in RenderTargetHandle depth, in RenderTargetHandle internalLut, bool hasFinalPass, bool enableSRGBConversion)
         {
             m_Descriptor = baseDescriptor;
@@ -333,7 +331,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 // Only apply dithering & grain if there isn't a final pass.
                 SetupGrain(cameraData, m_Materials.uber);
                 SetupDithering(cameraData, m_Materials.uber);
-				
+
                 if (Display.main.requiresSrgbBlitToBackbuffer && m_EnableSRGBConversionIfNeeded)
                     m_Materials.uber.EnableKeyword(ShaderKeywordStrings.LinearToSRGBConversion);
 
@@ -1089,19 +1087,6 @@ namespace UnityEngine.Rendering.Universal.Internal
                 }
 
                 return CoreUtils.CreateEngineMaterial(shader);
-            }
-
-            internal void Cleanup()
-            {
-                CoreUtils.Destroy(stopNaN);
-                CoreUtils.Destroy(subpixelMorphologicalAntialiasing);
-                CoreUtils.Destroy(gaussianDepthOfField);
-                CoreUtils.Destroy(bokehDepthOfField);
-                CoreUtils.Destroy(cameraMotionBlur);
-                CoreUtils.Destroy(paniniProjection);
-                CoreUtils.Destroy(bloom);
-                CoreUtils.Destroy(uber);
-                CoreUtils.Destroy(finalPass);
             }
         }
 

@@ -38,7 +38,7 @@ namespace UnityEngine.Rendering.Universal
         static internal class PerCameraBuffer
         {
             // TODO: This needs to account for stereo rendering
-            public static int unity_MatrixInvVP;
+            public static int _InvCameraViewProj;
             public static int _ScaledScreenParams;
             public static int _ScreenParams;
             public static int _WorldSpaceCameraPos;
@@ -104,18 +104,20 @@ namespace UnityEngine.Rendering.Universal
             get => 8;
         }
 
-        ScriptableRenderer[] renderers = null;
-        int m_DefaultRendererIndex = -1;
+        /// <summary>
+        /// Returns the current render pipeline asset for the current quality setting.
+        /// If no render pipeline asset is assigned in QualitySettings, then returns the one assigned in GraphicsSettings.
+        /// </summary>
+        public static UniversalRenderPipelineAsset asset
+        {
+            get
+            {
+                return GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+            }
+        }
 
         public UniversalRenderPipeline(UniversalRenderPipelineAsset asset)
         {
-            m_DefaultRendererIndex = asset.m_DefaultRendererIndex;
-
-            int rendererCount = asset.m_RendererDataList.Length;
-            renderers = new ScriptableRenderer[rendererCount];
-            for (int i = 0; i < rendererCount; ++i)
-                renderers[i] = asset.m_RendererDataList[i]?.InternalCreateRenderer();
-
             SetSupportedRenderingFeatures();
 
             PerFrameBuffer._GlossyEnvironmentColor = Shader.PropertyToID("_GlossyEnvironmentColor");
@@ -127,7 +129,7 @@ namespace UnityEngine.Rendering.Universal
             PerFrameBuffer.unity_DeltaTime = Shader.PropertyToID("unity_DeltaTime");
             PerFrameBuffer._TimeParameters = Shader.PropertyToID("_TimeParameters");
 
-            PerCameraBuffer.unity_MatrixInvVP = Shader.PropertyToID("unity_MatrixInvVP");
+            PerCameraBuffer._InvCameraViewProj = Shader.PropertyToID("_InvCameraViewProj");
             PerCameraBuffer._ScreenParams = Shader.PropertyToID("_ScreenParams");
             PerCameraBuffer._ScaledScreenParams = Shader.PropertyToID("_ScaledScreenParams");
             PerCameraBuffer._WorldSpaceCameraPos = Shader.PropertyToID("_WorldSpaceCameraPos");
@@ -149,10 +151,6 @@ namespace UnityEngine.Rendering.Universal
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-
-            foreach (var renderer in renderers)
-                renderer?.Dispose();
-
             Shader.globalRenderPipeline = "";
             SupportedRenderingFeatures.active = new SupportedRenderingFeatures();
             ShaderData.instance.Dispose();
@@ -293,6 +291,10 @@ namespace UnityEngine.Rendering.Universal
             int lastActiveOverlayCameraIndex = -1;
             if (cameraStack != null)
             {
+#if POST_PROCESSING_STACK_2_0_0_OR_NEWER
+                if (asset.postProcessingFeatureSet != PostProcessingFeatureSet.PostProcessingV2)
+                {
+#endif
                 // TODO: Add support to camera stack in VR multi pass mode
                 if (!IsMultiPassStereoEnabled(baseCamera))
                 {
@@ -325,6 +327,13 @@ namespace UnityEngine.Rendering.Universal
                 {
                     Debug.LogWarning("Multi pass stereo mode doesn't support Camera Stacking. Overlay cameras will skip rendering.");
                 }
+#if POST_PROCESSING_STACK_2_0_0_OR_NEWER
+                }
+                else
+                {
+                    Debug.LogWarning("Post-processing V2 doesn't support Camera Stacking. Overlay cameras will skip rendering.");
+                }
+#endif
             }
 
 
@@ -453,6 +462,17 @@ namespace UnityEngine.Rendering.Universal
                 cameraData.antialiasing = AntialiasingMode.None;
                 cameraData.antialiasingQuality = AntialiasingQuality.High;
             }
+
+            // PPv2 compatibility
+#if POST_PROCESSING_STACK_2_0_0_OR_NEWER
+#pragma warning disable 0618 // Obsolete
+            if (settings.postProcessingFeatureSet == PostProcessingFeatureSet.PostProcessingV2)
+            {
+                baseCamera.TryGetComponent(out cameraData.postProcessLayer);
+                cameraData.postProcessEnabled &= cameraData.postProcessLayer != null && cameraData.postProcessLayer.isActiveAndEnabled;
+            }
+#pragma warning restore 0618
+#endif
 
             // Disables post if GLes2
             cameraData.postProcessEnabled &= SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2;
@@ -780,7 +800,7 @@ namespace UnityEngine.Rendering.Universal
             Matrix4x4 viewMatrix = camera.worldToCameraMatrix;
             Matrix4x4 viewProjMatrix = projMatrix * viewMatrix;
             Matrix4x4 invViewProjMatrix = Matrix4x4.Inverse(viewProjMatrix);
-            Shader.SetGlobalMatrix(PerCameraBuffer.unity_MatrixInvVP, invViewProjMatrix);
+            Shader.SetGlobalMatrix(PerCameraBuffer._InvCameraViewProj, invViewProjMatrix);
         }
     }
 }

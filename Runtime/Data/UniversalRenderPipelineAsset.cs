@@ -5,7 +5,6 @@ using UnityEditor;
 using UnityEditor.ProjectWindowCallback;
 using System.IO;
 #endif
-using System.ComponentModel;
 
 namespace UnityEngine.Rendering.LWRP
 {
@@ -93,10 +92,44 @@ namespace UnityEngine.Rendering.Universal
         _2DRenderer,
     }
 
+    /// <summary>
+    /// The available color grading modes to use for the Project.
+    /// </summary>
     public enum ColorGradingMode
     {
+        /// <summary>
+        /// This mode follows a more classic workflow. Unity applies a limited range of color
+        /// grading after tonemapping.
+        /// </summary>
         LowDynamicRange,
+
+        /// <summary>
+        /// This mode works best for high precision grading similar to movie production workflow.
+        /// Unity applies color grading before tonemapping.
+        /// </summary>
         HighDynamicRange
+    }
+
+    /// <summary>
+    /// The available post-processing solutions to use for the project. To future proof your
+    /// application, use <see cref="Integrated"/> instead of the comparability mode. Only use
+    /// compatibility mode if your project still uses the Post-processing V2 package, but be aware
+    /// that Unity plans to deprecate Post-processing V2 support for the Universal Render Pipeline
+    /// in the near future.
+    /// </summary>
+    public enum PostProcessingFeatureSet
+    {
+        /// <summary>
+        /// The integrated post-processing stack.
+        /// </summary>
+        Integrated,
+
+        /// <summary>
+        /// The post-processing stack v2. This option only works if the package is installed in the
+        /// project. Be aware that Unity plans to deprecate Post-processing V2 support for the
+        /// Universal Render Pipeline in the near future.
+        /// </summary>
+        PostProcessingV2
     }
 
     public class UniversalRenderPipelineAsset : RenderPipelineAsset, ISerializationCallbackReceiver
@@ -109,12 +142,12 @@ namespace UnityEngine.Rendering.Universal
 
         // Deprecated settings for upgrading sakes
         [SerializeField] RendererType m_RendererType = RendererType.ForwardRenderer;
-        [EditorBrowsable(EditorBrowsableState.Never)]
         [SerializeField] internal ScriptableRendererData m_RendererData = null;
 
         // Renderer settings
         [SerializeField] internal ScriptableRendererData[] m_RendererDataList = new ScriptableRendererData[1];
-        [SerializeField] internal int m_DefaultRendererIndex = 0;
+        internal ScriptableRenderer[] m_Renderers = new ScriptableRenderer[1];
+        [SerializeField] int m_DefaultRendererIndex = 0;
 
         // General settings
         [SerializeField] bool m_RequireDepthTexture = false;
@@ -155,6 +188,9 @@ namespace UnityEngine.Rendering.Universal
         [SerializeField] PipelineDebugLevel m_DebugLevel = PipelineDebugLevel.Disabled;
 
         // Post-processing settings
+#pragma warning disable 414 // 'field' is assigned but never used
+        [SerializeField] PostProcessingFeatureSet m_PostProcessingFeatureSet = PostProcessingFeatureSet.Integrated;
+#pragma warning restore 414
         [SerializeField] ColorGradingMode m_ColorGradingMode = ColorGradingMode.LowDynamicRange;
         [SerializeField] int m_ColorGradingLutSize = 32;
 
@@ -189,6 +225,8 @@ namespace UnityEngine.Rendering.Universal
                 instance.m_RendererDataList[0] = CreateInstance<ForwardRendererData>();
             // Initialize default Renderer
             instance.m_EditorResourcesAsset = LoadResourceFile<UniversalRenderPipelineEditorResources>();
+            instance.m_Renderers = new ScriptableRenderer[1];
+            instance.m_Renderers[0] = instance.m_RendererDataList[0].InternalCreateRenderer();
             return instance;
         }
 
@@ -312,6 +350,10 @@ namespace UnityEngine.Rendering.Universal
                 return null;
             }
 
+            if(m_Renderers == null || m_Renderers.Length < m_RendererDataList.Length)
+                m_Renderers = new ScriptableRenderer[m_RendererDataList.Length];
+
+            m_Renderers[0] = m_RendererDataList[0].InternalCreateRenderer();
             return new UniversalRenderPipeline(this);
         }
 
@@ -345,12 +387,23 @@ namespace UnityEngine.Rendering.Universal
 #endif
         }
 
-        /// <summary>
-        /// Returns the default renderer being used by the current render pipeline instace.
-        /// </summary>
         public ScriptableRenderer scriptableRenderer
         {
-            get => UniversalRenderPipeline.currentRenderPipeline?.GetRenderer(m_DefaultRendererIndex);
+            get
+            {
+                if (m_RendererDataList?.Length > m_DefaultRendererIndex && m_RendererDataList[m_DefaultRendererIndex] == null)
+                {
+                    Debug.LogError("Default renderer is missing from the current Pipeline Asset.", this);
+                    return null;
+                }
+
+                if (scriptableRendererData.isInvalidated || m_Renderers[m_DefaultRendererIndex] == null)
+                {
+                    m_Renderers[m_DefaultRendererIndex] = scriptableRendererData.InternalCreateRenderer();
+                }
+
+                return m_Renderers[m_DefaultRendererIndex];
+            }
         }
 
         internal ScriptableRendererData scriptableRendererData
@@ -362,6 +415,27 @@ namespace UnityEngine.Rendering.Universal
 
                 return m_RendererDataList[m_DefaultRendererIndex];
             }
+        }
+
+        internal ScriptableRenderer GetRenderer(int index)
+        {
+            if (index == -1) index = m_DefaultRendererIndex;
+
+            if (index >= m_RendererDataList.Length || index < 0 || m_RendererDataList[index] == null)
+            {
+                Debug.LogWarning(
+                    $"Renderer at index {index.ToString()} is missing, falling back to Default Renderer {m_RendererDataList[m_DefaultRendererIndex].name}",
+                    this);
+                    index = m_DefaultRendererIndex;
+            }
+
+            if(m_Renderers == null || m_Renderers.Length < m_RendererDataList.Length)
+                m_Renderers = new ScriptableRenderer[m_RendererDataList.Length];
+
+            if ( m_RendererDataList[index].isInvalidated || m_Renderers[index] == null)
+                m_Renderers[index] = m_RendererDataList[index].InternalCreateRenderer();
+
+            return m_Renderers[index];
         }
 
 #if UNITY_EDITOR
@@ -546,12 +620,43 @@ namespace UnityEngine.Rendering.Universal
             set { m_UseSRPBatcher = value; }
         }
 
+        /// <summary>
+        /// The post-processing solution used in the project.
+        /// </summary>
+        public PostProcessingFeatureSet postProcessingFeatureSet
+        {
+            get
+            {
+#if POST_PROCESSING_STACK_2_0_0_OR_NEWER
+                return m_PostProcessingFeatureSet;
+#else
+                return PostProcessingFeatureSet.Integrated;
+#endif
+            }
+            set
+            {
+#if POST_PROCESSING_STACK_2_0_0_OR_NEWER
+                m_PostProcessingFeatureSet = value;
+#else
+                m_PostProcessingFeatureSet = PostProcessingFeatureSet.Integrated;
+#endif
+            }
+        }
+
+        /// <summary>
+        /// The color grading mode used in the project.
+        /// </summary>
         public ColorGradingMode colorGradingMode
         {
             get { return m_ColorGradingMode; }
             set { m_ColorGradingMode = value; }
         }
 
+        /// <summary>
+        /// The color grading LUT size used in the project. Higher sizes provide more precision, but
+        /// have a potential cost of performance and memory use. You cannot mix and match LUT sizes,
+        /// so decide on a size before you start the color grading process.
+        /// </summary>
         public int colorGradingLutSize
         {
             get { return m_ColorGradingLutSize; }

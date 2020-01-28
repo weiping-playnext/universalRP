@@ -27,7 +27,7 @@ The [Universal Render Pipeline Asset](universalrp-asset.md) controls the global 
 To create a Universal Render Pipeline Asset:
 
 1. In the Editor, go to the Project window.
-2. Right-click in the Project window, and select  __Create > Rendering > Universal Render Pipeline > Pipeline Asset__. Alternatively, navigate to the menu bar at the top, and select __Assets > Create > Rendering > Universal Render Pipeline > Pipeline Asset__.
+2. Right-click in the Project window, and select  __Create__ &gt; __Rendering__ &gt: __Universal Render Pipeline__&gt: __Pipeline Asset__. Alternatively, navigate to the menu bar at the top, and select __Assets__ &gt: __Create__ &gt: __Rendering__ &gt: __Universal Render Pipeline__ &gt: __Pipeline Asset__.
 
 You can either leave the default name for the new Universal Render Pipeline Asset, or type a new one.
 
@@ -39,7 +39,7 @@ To use URP, you need to add the newly created Universal Render Pipeline Asset to
 To add the Universal Render Pipeline Asset to your Graphics settings:
 
 
-1. Navigate to __Edit > Project Settings... > Graphics__. 
+1. Navigate to __Edit__ &gt; __Project Settings...__ &gt; __Graphics__. 
 2. In the __Scriptable Render Pipeline Settings__ field, add the Universal Render Pipeline Asset you created earlier. When you add the Universal Render Pipeline Asset, the available Graphics settings immediately change. Your Project is now using URP.
 
 ## Upgrading your shaders
