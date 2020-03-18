@@ -7,6 +7,9 @@ using UnityEditor.Rendering.Universal;
 #endif
 using UnityEngine.Scripting.APIUpdating;
 using Lightmapping = UnityEngine.Experimental.GlobalIllumination.Lightmapping;
+#if ENABLE_VR && ENABLE_XR_MODULE
+using UnityEngine.XR;
+#endif
 
 namespace UnityEngine.Rendering.LWRP
 {
@@ -104,18 +107,6 @@ namespace UnityEngine.Rendering.Universal
             get => 8;
         }
 
-        /// <summary>
-        /// Returns the current render pipeline asset for the current quality setting.
-        /// If no render pipeline asset is assigned in QualitySettings, then returns the one assigned in GraphicsSettings.
-        /// </summary>
-        public static UniversalRenderPipelineAsset asset
-        {
-            get
-            {
-                return GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
-            }
-        }
-
         public UniversalRenderPipeline(UniversalRenderPipelineAsset asset)
         {
             SetSupportedRenderingFeatures();
@@ -136,8 +127,16 @@ namespace UnityEngine.Rendering.Universal
 
             // Let engine know we have MSAA on for cases where we support MSAA backbuffer
             if (QualitySettings.antiAliasing != asset.msaaSampleCount)
+            {
                 QualitySettings.antiAliasing = asset.msaaSampleCount;
+#if ENABLE_VR && ENABLE_VR_MODULE
+                XR.XRDevice.UpdateEyeTextureMSAASetting();
+#endif
+            }
 
+#if ENABLE_VR && ENABLE_VR_MODULE
+            XRGraphics.eyeTextureResolutionScale = asset.renderScale;
+#endif
             // For compatibility reasons we also match old LightweightPipeline tag.
             Shader.globalRenderPipeline = "UniversalPipeline,LightweightPipeline";
 
@@ -151,6 +150,7 @@ namespace UnityEngine.Rendering.Universal
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
+
             Shader.globalRenderPipeline = "";
             SupportedRenderingFeatures.active = new SupportedRenderingFeatures();
             ShaderData.instance.Dispose();
@@ -162,6 +162,41 @@ namespace UnityEngine.Rendering.Universal
             CameraCaptureBridge.enabled = false;
         }
 
+#if ENABLE_VR && ENABLE_XR_MODULE
+        static List<XRDisplaySubsystem> xrDisplayList = new List<XRDisplaySubsystem>();
+        static bool xrSkipRender = false;
+        internal void SetupXRStates()
+        {
+            SubsystemManager.GetInstances(xrDisplayList);
+
+            if (xrDisplayList.Count > 0)
+            {
+                if (xrDisplayList.Count > 1)
+                    throw new NotImplementedException("Only 1 XR display is supported.");
+
+                XRDisplaySubsystem display = xrDisplayList[0];
+                if(display.GetRenderPassCount() == 0)
+                {
+                    // Disable XR rendering if display contains 0 renderpass
+                    if(!xrSkipRender)
+                    {
+                        xrSkipRender = true;
+                        Debug.Log("XR display is not ready. Skip XR rendering.");
+                    }
+                }
+                else
+                {
+                    // Enable XR rendering if display contains >0 renderpass
+                    if (xrSkipRender)
+                    {
+                        xrSkipRender = false;
+                        Debug.Log("XR display is ready. Start XR rendering.");
+                    }
+                }
+            }
+        }
+#endif
+
         protected override void Render(ScriptableRenderContext renderContext, Camera[] cameras)
         {
             BeginFrameRendering(renderContext, cameras);
@@ -169,6 +204,11 @@ namespace UnityEngine.Rendering.Universal
             GraphicsSettings.lightsUseLinearIntensity = (QualitySettings.activeColorSpace == ColorSpace.Linear);
             GraphicsSettings.useScriptableRenderPipelineBatching = asset.useSRPBatcher;
             SetupPerFrameShaderConstants();
+#if ENABLE_VR && ENABLE_XR_MODULE
+            SetupXRStates();
+            if(xrSkipRender)
+                return;
+#endif
 
             SortCameras(cameras);
             for (int i = 0; i < cameras.Length; ++i)
